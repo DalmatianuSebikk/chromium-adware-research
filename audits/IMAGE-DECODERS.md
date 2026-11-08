@@ -29,6 +29,6 @@ The AdFection feed chain idea: an attacker's **server** sends bytes that a victi
 
 ## Verdict
 
-**Clean.** No coordinate bug exists in this cone at the audited revision. The chain "attacker bytes → image decode → OOB write" is structurally alive in Chrome (the write primitive is genuinely unguarded), but these two decoders are not the way through. The remaining image-family surface — **GIF** and **PNG-proper** — is listed in [`docs/FURTHER-DIRECTIONS.md`](../docs/FURTHER-DIRECTIONS.md).
+**Clean.** No coordinate bug exists in this cone at the audited revision. The chain "attacker bytes → image decode → OOB write" is structurally alive in Chrome (the write primitive is genuinely unguarded), but these two decoders are not the way through — and neither, it turned out, is anything else in the image family: see round 2 ([`IMAGE-FAMILY-2.md`](IMAGE-FAMILY-2.md)), where GIF, PNG, JPEG, WebP, JXL and AVIF all came back clean too.
 
 *Why publish a clean audit? Because "where is Chrome NOT armored" requires knowing where it IS. This one cost a full line-by-line pass to establish; now nobody has to repeat it.*

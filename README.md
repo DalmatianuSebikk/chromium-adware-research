@@ -28,11 +28,13 @@ This repo is our honest answer: a small number of findings, a large number of "w
 | AbortSignal abort-list stress engine | UAF bug-class hunt (upstream-known crashes, we mapped what *doesn't* trigger them) | Public here — see `poc/` |
 | MediaStream device-observer UAF ("M1") | Memory corruption (renderer) — *disproven before filing* | ❌ The "verified chain" was a composition error — the sync-JS branch and the write branch are mutually exclusive by an explicit guard. See [`audits/NEGATIVE-RESULTS.md`](audits/NEGATIVE-RESULTS.md) entry 9 |
 | UserScript world messaging toggle failure | Security control silently fails | 🔒 Runtime-proven; reported — details embargoed until fix |
-| ICO/BMP decoders, WebRTC SCTP parser, fenced-frame/PA remnants, V8 watch-list invariants | — | ✅ Audited clean; see `audits/` |
+| BMP alpha-mask stale-slot "leak" | Hypothesized info leak | ❌ Refuted by discriminator: the stale value is never the primer's mask (entry 18) |
+| ICO/BMP, GIF, PNG, JPEG, WebP, JXL, AVIF, MSE demuxers, WebRTC SCTP, fenced-frame remnants, V8 watch-list, webfont pipeline | — | ✅ Audited clean; see `audits/` |
+| Webfont table delegation | Structural observation (public-source-derived) | 📌 Blink passes 20 font tables to HarfBuzz *unsanitized by design* — making HB's layout engine the last big C++ webfont surface. Mapped in [`audits/WEBFONT-PIPELINE.md`](audits/WEBFONT-PIPELINE.md) |
 
 ## The honest headline
 
-Chrome's ad-adjacent surface is **armored**. Across this project: line-by-line audits of legacy image decoders, parser rewrites, ~40,000 fuzzer-generated programs replayed, targeted invariant-stress against known-weak V8 patterns — zero memory-safety bugs found in the cones we checked. The AdFection-style actors don't find these bugs cheaply either; that's why a working browser exploit chain sells for millions. Our negative results are the evidence, and they're logged as carefully as a find would be.
+Chrome's ad-adjacent surface is **armored**, and the armor is now mapped cone by cone. Across this project: line-by-line audits of the *entire* image-decoder family, the MSE media demuxers, and the web-font pipeline; parser-rewrite verification in WebRTC; ~40,000 fuzzer-generated programs replayed; targeted invariant-stress against known-weak V8 patterns — zero memory-safety bugs found in the cones we checked. The most interesting output isn't a clean verdict: it's where the armor *thins*. The image family's 2008-era C++ is simply gone (wuffs/Rust), and web fonts funnel their unsanitized tables into one place — HarfBuzz, the last big C++ parser standing in that path, in the renderer, on every platform. The AdFection-style actors don't find these bugs cheaply either; that's why a working browser exploit chain sells for millions. Our negative results are the evidence, and they're logged as carefully as a find would be.
 
 ## Ground rules
 
