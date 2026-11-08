@@ -26,7 +26,7 @@ This repo is our honest answer: a small number of findings, a large number of "w
 | Finding | Class | Status |
 |---|---|---|
 | AbortSignal abort-list stress engine | UAF bug-class hunt (upstream-known crashes, we mapped what *doesn't* trigger them) | Public here — see `poc/` |
-| MediaStream device-observer UAF | Memory corruption (renderer) | 🔒 Verified; reported via Chrome VRP — details embargoed until fix |
+| MediaStream device-observer UAF ("M1") | Memory corruption (renderer) — *disproven before filing* | ❌ The "verified chain" was a composition error — the sync-JS branch and the write branch are mutually exclusive by an explicit guard. See [`audits/NEGATIVE-RESULTS.md`](audits/NEGATIVE-RESULTS.md) entry 9 |
 | UserScript world messaging toggle failure | Security control silently fails | 🔒 Runtime-proven; reported — details embargoed until fix |
 | ICO/BMP decoders, WebRTC SCTP parser, fenced-frame/PA remnants, V8 watch-list invariants | — | ✅ Audited clean; see `audits/` |
 
