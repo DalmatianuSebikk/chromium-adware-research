@@ -1,0 +1,182 @@
+<!doctype html>
+<!-- DOM-F1 v3: variant soak. Modes: sub (nested CloseSubscription aborts),
+     detach (same-origin child iframe teardown x abort orderings),
+     worker (worker-internal abort storms + terminate racing),
+     timeout (timer-driven settle under GC pressure),
+     base (v2.2 engine at low rate).
+     Oracle: release CHECK(handle)/SCOPED_CRASH_KEY in abort_signal.cc (Canary). -->
+<html><body>
+<script>
+const L = (m) => console.log('DOMF1v3 ' + m);
+const rand = (a, b) => a + Math.floor(Math.random() * (b - a + 1));
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+let rounds = 0, counters = { fetches: 0, teardowns: 0, elems: 0, workers: 0, detaches: 0, timeouts: 0, subs: 0 };
+
+function churnDOM(n) {
+  const f = document.createDocumentFragment();
+  for (let i = 0; i < n; i++) {
+    const d = document.createElement('div');
+    d.textContent = i & 0xff; f.appendChild(d);
+  }
+  document.body.appendChild(f);
+  counters.elems += n;
+  document.body.innerHTML = '';
+}
+
+// ---- mode: sub (c) nested abort via CloseSubscription ----
+async function modeSub() {
+  const outer = new AbortController();
+  const N = rand(20, 120);
+  let nestedC = null;
+  const obs = new Observable((subscriber) => {
+    // start(): register fetches on the SUBSCRIPTION signal
+    const sub = subscriber;
+    for (let i = 0; i < N; i++) {
+      fetch(`/api/junk?${Math.random()}`, { signal: sub.signal }).catch(() => {});
+      counters.fetches++;
+    }
+    // compose chains from sub.signal
+    for (let i = 0; i < rand(2, 8); i++) {
+      AbortSignal.any([sub.signal]);
+    }
+    nestedC = new AbortController();
+    for (let i = 0; i < rand(5, 30); i++) {
+      fetch(`/api/junk?n${Math.random()}`, { signal: nestedC.signal }).catch(() => {});
+      counters.fetches++;
+    }
+    subscriber.addTeardown(() => {
+      counters.teardowns++;
+      // user JS running synchronously inside RunAbortSteps:
+      churnDOM(rand(50, 1500));
+      if (nestedC && Math.random() < 0.5) nestedC.abort(); // explicit nested abort mid-run
+    });
+  });
+  obs.subscribe({}, { signal: outer.signal });  // signal = 2nd ARG (options)
+  counters.subs++;
+  await sleep(rand(1, 25));
+  churnDOM(rand(200, 3000)); // pressure before settle
+  outer.abort();
+  await sleep(rand(5, 40));
+}
+
+// ---- mode: detach (a) same-origin child iframe teardown x abort ----
+async function modeDetach() {
+  const ctrl = new AbortController();
+  // arm fn must exist BEFORE the srcdoc child parses (it calls it synchronously)
+  window.__armChild = (w) => {
+    const sig = ctrl.signal;
+    const F = rand(50, 600);
+    for (let i = 0; i < F; i++) {
+      w.fetch(`data:text/plain,${i}`, { signal: sig }).catch(() => {});
+      counters.fetches++;
+    }
+    for (let i = 0; i < rand(1, 5); i++) w.AbortSignal.any([sig]);
+    w.__sub = new AbortController();
+    w.__armDone = true;
+  };
+  const ifr = document.createElement('iframe');
+  ifr.style.display = 'none';
+  ifr.srcdoc = '<!doctype html><script>try{parent.__armChild(window);}catch(e){}<\/script>';
+  document.body.appendChild(ifr);
+  const orderings = ['remove-then-abort', 'abort-then-remove', 'abort-in-microtask-remove-after'];
+  const ord = orderings[rand(0, 2)];
+  await new Promise(res => { ifr.onload = res; setTimeout(res, 300); });
+  if (ord === 'remove-then-abort') {
+    ifr.remove(); counters.detaches++;
+    ctrl.abort();
+  } else if (ord === 'abort-then-remove') {
+    ctrl.abort();
+    ifr.remove(); counters.detaches++;
+  } else {
+    ctrl.abort();
+    Promise.resolve().then(() => { ifr.remove(); counters.detaches++; });
+  }
+  await sleep(rand(10, 60));
+}
+
+// ---- mode: worker (b) worker-internal storms + terminate racing ----
+async function modeWorker() {
+  const workerSrc = `
+    let n = 0;
+    function storm() {
+      const c = new AbortController();
+      for (let i = 0; i < ${rand(100, 900)}; i++) {
+        fetch('/api/junk?w' + Math.random(), { signal: c.signal }).catch(() => {});
+      }
+      for (let i = 0; i < 4; i++) { try { AbortSignal.any([c.signal]); } catch(e){} }
+      const t = AbortSignal.timeout(${rand(1, 30)});
+      AbortSignal.any([c.signal, t]);
+      c.abort();
+      n++;
+    }
+    setInterval(storm, ${rand(1, 8)});
+    onmessage = (e) => { if (e.data === 'storm') storm(); };
+  `;
+  let w;
+  try {
+    w = new Worker(URL.createObjectURL(new Blob([workerSrc])));
+    counters.workers++;
+  } catch (e) { return; }
+  const life = rand(30, 400);
+  const killAt = rand(1, Math.max(2, life - 5));
+  await sleep(killAt);
+  try { w.postMessage('storm'); } catch (e) {}
+  await sleep(Math.max(0, life - killAt));
+  try { w.terminate(); } catch (e) {}
+  await sleep(rand(2, 15));
+}
+
+// ---- mode: timeout — timer-driven settles under pressure ----
+async function modeTimeout() {
+  const T = rand(30, 200);
+  for (let i = 0; i < T; i++) {
+    const sig = AbortSignal.timeout(rand(0, 40));
+    const anySig = AbortSignal.any([sig]);
+    for (let j = 0; j < rand(1, 4); j++) {
+      fetch(`/api/junk?t${Math.random()}`, { signal: anySig }).catch(() => {});
+      counters.fetches++;
+    }
+    counters.timeouts++;
+  }
+  churnDOM(rand(200, 2000));
+  await sleep(rand(30, 80));
+}
+
+// ---- mode: base — v2.2 engine at reduced rate ----
+async function modeBase() {
+  const c = new AbortController();
+  const F = rand(500, 3000);
+  for (let i = 0; i < F; i++) {
+    fetch(`data:text/plain,${i}`, { signal: c.signal }).catch(() => {});
+    counters.fetches++;
+  }
+  for (let i = 0; i < rand(5, 25); i++) {
+    fetch(`/api/junk?b${Math.random()}`, { signal: c.signal }).catch(() => {});
+    counters.fetches++;
+  }
+  try { scheduler.postTask(() => {}, { signal: c.signal }); } catch (e) {}
+  let dep = c.signal;
+  for (let i = 0; i < rand(0, 10); i++) dep = AbortSignal.any([dep]);
+  await sleep(rand(2, 20));
+  churnDOM(rand(500, 4000));
+  c.abort();
+  await sleep(rand(5, 30));
+}
+
+const MODES = [modeSub, modeDetach, modeWorker, modeTimeout, modeBase];
+
+async function main() {
+  L('start v3 ' + location.href);
+  while (true) {
+    const mode = MODES[rounds % MODES.length];
+    try { await mode(); } catch (e) { L('ERR ' + e.message); }
+    rounds++;
+    if (rounds % 10 === 0) {
+      L(`rounds=${rounds} ` + Object.entries(counters).map(([k, v]) => `${k}=${v}`).join(' '));
+      await sleep(rand(20, 100));
+    }
+  }
+}
+main();
+</script>
+</body></html>

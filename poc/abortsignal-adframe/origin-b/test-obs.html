@@ -1,0 +1,60 @@
+<!doctype html>
+<html><body><script>
+const log = (...a) => console.log('OBS-TEST', ...a);
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+(async () => {
+  log('Observable' in window, typeof Observable);
+
+  // T1: does unsubscribe() run teardown at all?
+  try {
+    let ran = 0;
+    const obs = new Observable((subscriber) => {
+      log('T1 ctor: subscriber keys', Object.getOwnPropertyNames(Object.getPrototypeOf(subscriber)).join(','));
+      subscriber.addTeardown(() => { ran++; log('T1 TEARDOWN RAN'); });
+    });
+    const sub = obs.subscribe({});
+    log('T1 subscribed, sub=', typeof sub, sub && Object.getOwnPropertyNames(Object.getPrototypeOf(sub)).join(','));
+    await sleep(50);
+    if (sub && typeof sub.unsubscribe === 'function') { sub.unsubscribe(); log('T1 called unsubscribe, ran=', ran); }
+    else log('T1 no unsubscribe method');
+  } catch (e) { log('T1 ERR', String(e)); }
+
+  // T2: does signal abort run teardown?
+  try {
+    let ran = 0;
+    const c = new AbortController();
+    const obs = new Observable((subscriber) => {
+      subscriber.addTeardown(() => { ran++; log('T2 TEARDOWN RAN active=', subscriber.active); });
+    });
+    const sub = obs.subscribe({ signal: c.signal });
+    await sleep(50);
+    c.abort();
+    await sleep(50);
+    log('T2 after abort, ran=', ran);
+  } catch (e) { log('T2 ERR', String(e)); }
+
+  // T3: subscription kept alive via variable vs dropped — abort either way
+  try {
+    let ran = 0;
+    const c = new AbortController();
+    const obs = new Observable((subscriber) => {
+      subscriber.addTeardown(() => { ran++; log('T3 TEARDOWN RAN'); });
+    });
+    obs.subscribe({ signal: c.signal }); // NOT kept
+    await sleep(50);
+    c.abort();
+    await sleep(50);
+    log('T3 after abort (sub dropped), ran=', ran);
+  } catch (e) { log('T3 ERR', String(e)); }
+
+  // T4: signal event listener fires? (proves abort reached signal)
+  try {
+    const c = new AbortController();
+    c.signal.addEventListener('abort', () => log('T4 abort EVENT fired'));
+    c.abort();
+    await sleep(20);
+    log('T4 done');
+  } catch (e) { log('T4 ERR', String(e)); }
+})();
+</script></body></html>

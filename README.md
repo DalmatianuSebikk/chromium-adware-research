@@ -1,0 +1,49 @@
+# chromium-adware-research
+
+**Where could an ad hurt Chrome?** — an independent, open research notebook about the attack surface that web advertising touches in Chromium, started after the Citizen Lab "AdFection" revelations.
+
+## Why this exists (the 30-second version)
+
+In October 2026, Citizen Lab published [**Exposing AdFection**](https://citizenlab.ca/research/how-discover-tech-turned-targeted-ads-into-a-pipeline-for-spyware/) — the first confirmed case of **zero-click mercenary spyware delivered through targeted ads**. An ad-tech company won ad auctions, and the winning "ad" was actually a delivery vehicle: it served exploit code straight into the browser of the specific person being targeted, and harmless blank bytes to everyone else (so ad-scanners never saw anything).
+
+We asked a simple question: **if an attacker owns the ad slot — if their code runs inside an ordinary cross-origin ad iframe on any page — which parts of Chrome's open-source code could it actually attack?** And the flip side: which parts are armored?
+
+This repo is our honest answer: a small number of findings, a large number of "we checked, it's solid" verdicts, and the method we used to tell them apart.
+
+## Repo map
+
+| Path | What's in it |
+|---|---|
+| [`docs/WHY-THIS-RESEARCH.md`](docs/WHY-THIS-RESEARCH.md) | The full origin story and the threat model |
+| [`docs/DELIVERY-BAR.md`](docs/DELIVERY-BAR.md) | The filter we graded every finding against ("could an ad deliver this?") |
+| [`docs/FURTHER-DIRECTIONS.md`](docs/FURTHER-DIRECTIONS.md) | Where to dig next — in Chromium and around it |
+| [`poc/abortsignal-adframe/`](poc/abortsignal-adframe/) | Runnable stress engine for the AbortSignal abort-list bug class (upstream-known, crbug 40068730), with an ELI5 |
+| [`findings/`](findings/) | Embargoed findings — verified bugs reported to upstream; details publish after they're fixed |
+| [`audits/`](audits/) | The negative results: everything we line-by-line audited and found **clean** (this is a feature of the repo, not a failure) |
+
+## Findings status
+
+| Finding | Class | Status |
+|---|---|---|
+| AbortSignal abort-list stress engine | UAF bug-class hunt (upstream-known crashes, we mapped what *doesn't* trigger them) | Public here — see `poc/` |
+| MediaStream device-observer UAF | Memory corruption (renderer) | 🔒 Verified; reported via Chrome VRP — details embargoed until fix |
+| UserScript world messaging toggle failure | Security control silently fails | 🔒 Runtime-proven; reported — details embargoed until fix |
+| ICO/BMP decoders, WebRTC SCTP parser, fenced-frame/PA remnants, V8 watch-list invariants | — | ✅ Audited clean; see `audits/` |
+
+## The honest headline
+
+Chrome's ad-adjacent surface is **armored**. Across this project: line-by-line audits of legacy image decoders, parser rewrites, ~40,000 fuzzer-generated programs replayed, targeted invariant-stress against known-weak V8 patterns — zero memory-safety bugs found in the cones we checked. The AdFection-style actors don't find these bugs cheaply either; that's why a working browser exploit chain sells for millions. Our negative results are the evidence, and they're logged as carefully as a find would be.
+
+## Ground rules
+
+1. **Responsible disclosure only.** Nothing that would help weaponize an unpatched bug gets published here; verified findings appear as embargo stubs until upstream fixes them.
+2. **Negative results are results.** "We checked X and it's solid" gets the same documentation as a find.
+3. **No attribution games.** This is about Chrome's code, not about tracking any specific actor.
+
+## Credits & sources
+
+- Citizen Lab, *Exposing AdFection* (Report 195, Oct 2026) — the origin.
+- Confiant, *ADINT weaponized* (Oct 2026) — independent technical companion on the same ad pipeline.
+- All Chromium analysis is against public source at a pinned revision (see audit docs for the pin).
+
+*This is independent research. Not affiliated with or endorsed by Google.*
