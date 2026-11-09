@@ -4,11 +4,16 @@
 
 ## Un-audited cones that ads can reach
 
-1. **HarfBuzz layout engine** — the #1 remaining C++ cone, by elimination rather than enthusiasm. Blink passes 20 font tables (`GSUB GPOS GDEF gvar CFF2 COLR …`) to HarfBuzz *unsanitized by design* (see [`audits/WEBFONT-PIPELINE.md`](../audits/WEBFONT-PIPELINE.md)); HB shapes them in the renderer on every platform. The known-bug delta is clean in Chrome's pins (we triaged all 327 commits), so what remains is a line-audit for *unknown* bugs in the apply machinery (`hb-ot-layout-common.hh`, `hb-ot-layout-gsubgpos.hh`, ~13k lines) and the variation-store math, under the "arbitrary bytes" assumption HB is built for. Caveat: automated scanners are visibly mining this library's history — assume the clock runs.
-2. **WebTransport + QUIC client** (`third_party/blink/renderer/modules/webtransport/`, network service) — attacker-chosen server responses over a modern transport with lots of state-machine surface. The AdFection SDK probed for WebTransport availability (`WebTransport` in its capability list), which tells you attackers care.
-3. **Chunked-delivery fuzzing harness for image decoders** — Chrome's own image fuzzers feed whole buffers; the streaming seam (bytes in attacker-chosen slices/timings) is comparatively unexercised. We specified the harness (delivery strategies + ASAN oracle) in our notes; building it is the follow-up ([`audits/IMAGE-FAMILY-2.md`](../audits/IMAGE-FAMILY-2.md)).
+*Ranked by the [`COVERAGE-MAP.md`](COVERAGE-MAP.md) chain-stage analysis — the cones below are the chain stages nobody here has examined yet.*
 
-*(The cones that used to lead this list — GIF, PNG, JPEG, WebP, JXL/AVIF, the multipart re-feeder, the MSE demuxers, the webfont sanitizers — are now audited clean; see `audits/`.)*
+1. **Network-response parsers** (`//net`: HTTP/2/nghttp2, HPACK, in-tree QUIC, Content-Encoding decoders for gzip/zlib/zstd) — in the AdFection model the ad server *is* the network peer and owns every response byte; this is the largest never-touched surface on the map. Heavily Google-fuzzed — the honest expectation is "armored," but the map should say so with evidence.
+2. **WebGL/ANGLE** — the AdFection SDK's own probe list asked for `WebGL`; shader/buffer/texture bytes are attacker-controlled in any ad frame, and this is the biggest untouched *renderer* surface (shader translation → Metal on macOS). Historically one of the richest CVE surfaces in the renderer.
+3. **ffmpeg + H.264/H.265 NALU decode paths** — video ads are the in-app medium (76.7% of AdFection impressions); the demuxers in front are audited clean but the codec interiors behind them are not.
+4. **WebTransport + QUIC client** (`third_party/blink/renderer/modules/webtransport/`, network service) — the AdFection SDK probed for WebTransport availability, which tells you attackers care.
+5. **HarfBuzz — remaining interior** — the apply-machinery core (matchers, Rule/Context/ChainContext, accelerators, `layout-common`) is now audited clean; what's left is the GSUB/GPOS lookup-format apply paths and the variation-store math, under the "arbitrary bytes" delegation Blink documents. Caveat unchanged: automated scanners are visibly mining this library's history — assume the clock runs.
+6. **Chunked-delivery harness — remaining runs** — the harness is now **built** and its first run came back 138/138 clean (see [`audits/NEGATIVE-RESULTS.md`](../audits/NEGATIVE-RESULTS.md) entry 24); the follow-ups are the hang suite and a DCHECK/ASAN oracle build.
+
+*(The cones that used to lead this list — GIF, PNG, JPEG, WebP, JXL/AVIF, the multipart re-feeder, the MSE demuxers, the webfont sanitizers, the WebCodecs broker, the OOPIF process-swap paths — are now audited clean; see `audits/` and the [`COVERAGE-MAP.md`](COVERAGE-MAP.md) for what that leaves.)*
 
 ## Method-level approaches (different from line-by-line reading)
 

@@ -17,6 +17,7 @@ This repo is our honest answer: a small number of findings, a large number of "w
 | [`docs/WHY-THIS-RESEARCH.md`](docs/WHY-THIS-RESEARCH.md) | The full origin story and the threat model |
 | [`docs/DELIVERY-BAR.md`](docs/DELIVERY-BAR.md) | The filter we graded every finding against ("could an ad deliver this?") |
 | [`docs/FURTHER-DIRECTIONS.md`](docs/FURTHER-DIRECTIONS.md) | Where to dig next — in Chromium and around it |
+| [`docs/COVERAGE-MAP.md`](docs/COVERAGE-MAP.md) | The AdFection attack chain stage-by-stage vs. what we did and didn't examine |
 | [`poc/abortsignal-adframe/`](poc/abortsignal-adframe/) | Runnable stress engine for the AbortSignal abort-list bug class (upstream-known, crbug 40068730), with an ELI5 |
 | [`findings/`](findings/) | Embargoed findings — verified bugs reported to upstream; details publish after they're fixed |
 | [`audits/`](audits/) | The negative results: everything we line-by-line audited and found **clean** (this is a feature of the repo, not a failure) |
@@ -29,7 +30,8 @@ This repo is our honest answer: a small number of findings, a large number of "w
 | MediaStream device-observer UAF ("M1") | Memory corruption (renderer) — *disproven before filing* | ❌ The "verified chain" was a composition error — the sync-JS branch and the write branch are mutually exclusive by an explicit guard. See [`audits/NEGATIVE-RESULTS.md`](audits/NEGATIVE-RESULTS.md) entry 9 |
 | UserScript world messaging toggle failure | Security control silently fails | 🔒 Runtime-proven; reported — details embargoed until fix |
 | BMP alpha-mask stale-slot "leak" | Hypothesized info leak | ❌ Refuted by discriminator: the stale value is never the primer's mask (entry 18) |
-| ICO/BMP, GIF, PNG, JPEG, WebP, JXL, AVIF, MSE demuxers, WebRTC SCTP, fenced-frame remnants, V8 watch-list, webfont pipeline | — | ✅ Audited clean; see `audits/` |
+| ICO/BMP, GIF, PNG, JPEG, WebP, JXL, AVIF, MSE demuxers, WebRTC SCTP, fenced-frame remnants, V8 watch-list, webfont pipeline, WebCodecs broker, OOPIF process-swap paths | — | ✅ Audited clean; see `audits/` |
+| Chunked-delivery differential harness | Method (streaming seam fuzzers don't reach) | ✅ Built & first run 138/138 clean — see [`audits/NEGATIVE-RESULTS.md`](audits/NEGATIVE-RESULTS.md) entry 24 |
 | Webfont table delegation | Structural observation (public-source-derived) | 📌 Blink passes 20 font tables to HarfBuzz *unsanitized by design* — making HB's layout engine the last big C++ webfont surface. Mapped in [`audits/WEBFONT-PIPELINE.md`](audits/WEBFONT-PIPELINE.md) |
 
 ## The honest headline
